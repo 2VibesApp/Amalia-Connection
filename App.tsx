@@ -1,12 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { AppState, AnswerPair } from './types';
 import { QUESTIONS } from './constants';
 import { getCompatibilityAnalysis, getInstantFeedback } from './geminiService';
 
 const App: React.FC = () => {
-  // --- Role & Sync Logic ---
-  const [role, setRole] = useState<'mattia' | 'amalia'>('mattia');
   const [gameState, setGameState] = useState<AppState>(AppState.START);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -19,45 +17,6 @@ const App: React.FC = () => {
   const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
-
-  // Initialize from URL
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlRole = params.get('role');
-    const stateData = params.get('state');
-
-    if (urlRole === 'amalia') setRole('amalia');
-    
-    if (stateData) {
-      try {
-        const decoded = JSON.parse(atob(stateData));
-        if (decoded.answers) setAnswers(decoded.answers);
-        if (decoded.index !== undefined) setCurrentQuestionIndex(decoded.index);
-        if (decoded.gameState) setGameState(decoded.gameState);
-      } catch (e) {
-        console.error("Failed to restore state", e);
-      }
-    }
-  }, []);
-
-  const generateShareLink = (targetRole: 'mattia' | 'amalia') => {
-    const baseUrl = window.location.origin + window.location.pathname;
-    const stateObj = {
-      answers,
-      index: currentQuestionIndex,
-      gameState
-    };
-    const stateEncoded = btoa(JSON.stringify(stateObj));
-    return `${baseUrl}?role=${targetRole}&state=${stateEncoded}`;
-  };
-
-  const handleCopyLink = (targetRole: 'mattia' | 'amalia') => {
-    const link = generateShareLink(targetRole);
-    navigator.clipboard.writeText(link);
-    setCopyStatus(targetRole === 'amalia' ? "Link for Amalia copied!" : "Link for Mattia copied!");
-    setTimeout(() => setCopyStatus(null), 3000);
-  };
 
   // --- Quiz Logic ---
   const nextOnboarding = () => setOnboardingStep(prev => prev + 1);
@@ -68,25 +27,21 @@ const App: React.FC = () => {
     setIsShowingInstantFeedback(true);
     const feedback = await getInstantFeedback(
       QUESTIONS[currentQuestionIndex].text.replace(/<[^>]*>?/gm, ''),
-      currentMattiaAnswer || (answers.find(a => a.questionId === currentQuestionIndex + 1)?.userAnswer || ''),
-      currentAmaliaAnswer || (answers.find(a => a.questionId === currentQuestionIndex + 1)?.amaliaAnswer || '')
+      currentMattiaAnswer,
+      currentAmaliaAnswer
     );
     setInstantFeedbackText(feedback);
     setIsLoadingFeedback(false);
   };
 
   const handleConfirmNext = () => {
-    const existing = answers.find(a => a.questionId === QUESTIONS[currentQuestionIndex].id);
-    
     const newAnswer: AnswerPair = {
       questionId: QUESTIONS[currentQuestionIndex].id,
-      userAnswer: role === 'mattia' ? currentMattiaAnswer : (existing?.userAnswer || ''),
-      amaliaAnswer: role === 'amalia' ? currentAmaliaAnswer : (existing?.amaliaAnswer || ''),
+      userAnswer: currentMattiaAnswer,
+      amaliaAnswer: currentAmaliaAnswer,
     };
 
-    const newAnswers = answers.filter(a => a.questionId !== newAnswer.questionId);
-    setAnswers([...newAnswers, newAnswer]);
-    
+    setAnswers([...answers, newAnswer]);
     setCurrentMattiaAnswer('');
     setCurrentAmaliaAnswer('');
     setIsShowingInstantFeedback(false);
@@ -134,14 +89,6 @@ const App: React.FC = () => {
 
   const categoryConfig = getCategoryConfig(currentQuestion.category);
 
-  // Helpers for disabling
-  const isMattiaDisabled = role !== 'mattia' || isShowingInstantFeedback;
-  const isAmaliaDisabled = role !== 'amalia' || isShowingInstantFeedback;
-  
-  // Display previous answers if we are in sync mode
-  const displayMattiaVal = role === 'mattia' ? currentMattiaAnswer : (answers.find(a => a.questionId === currentQuestion.id)?.userAnswer || "");
-  const displayAmaliaVal = role === 'amalia' ? currentAmaliaAnswer : (answers.find(a => a.questionId === currentQuestion.id)?.amaliaAnswer || "");
-
   return (
     <div className="min-h-screen flex flex-col items-center selection:bg-rose-100 px-4">
       {/* Dynamic Background Ornament */}
@@ -183,11 +130,7 @@ const App: React.FC = () => {
             {onboardingStep === 0 ? (
               <div className="space-y-6 md:space-y-8 animate-fade-in">
                 <h2 className="text-3xl md:text-5xl font-bold text-gray-900 leading-[1.2] tracking-tight">
-                  {role === 'amalia' ? (
-                    <>Hi <span className="accent-font text-rose-500/80">Amalia</span>, Mattia has a surprise for you.</>
-                  ) : (
-                    <>Hi Amalia, I have a <span className="accent-font text-rose-500/80">surprise</span> for you.</>
-                  )}
+                  Hi Amalia, I have a <span className="accent-font text-rose-500/80">surprise</span> for you.
                 </h2>
                 <p className="text-base md:text-lg text-gray-500 leading-relaxed font-light">
                   I built this entire application in just <span className="font-semibold text-gray-800">5 minutes</span> using my custom software. I wanted to create something beautiful for us.
@@ -202,15 +145,6 @@ const App: React.FC = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>
                   </button>
-                  
-                  {role === 'mattia' && (
-                    <button 
-                      onClick={() => handleCopyLink('amalia')}
-                      className="text-gray-400 text-[10px] uppercase tracking-[0.2em] font-bold hover:text-rose-500 transition-all"
-                    >
-                      {copyStatus || "Copy Link for Amalia"}
-                    </button>
-                  )}
                 </div>
               </div>
             ) : (
@@ -255,30 +189,26 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
-                    <div className={`space-y-3 md:space-y-5 transition-opacity ${role === 'amalia' ? 'opacity-60' : ''}`}>
+                    <div className="space-y-3 md:space-y-5">
                       <div className="flex items-center justify-between px-1">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Mattia</label>
-                        {role === 'amalia' && <span className="text-[8px] text-rose-400 font-bold">LOCKED</span>}
                       </div>
                       <textarea 
-                        value={displayMattiaVal}
-                        readOnly={isMattiaDisabled}
-                        onChange={(e) => role === 'mattia' && setCurrentMattiaAnswer(e.target.value)}
-                        placeholder={role === 'mattia' ? "My reflection..." : "Waiting for Mattia..."}
-                        className={`input-stationery w-full h-32 md:h-44 p-5 md:p-7 rounded-[24px] md:rounded-[32px] outline-none transition-all resize-none text-gray-800 placeholder-gray-300 leading-relaxed text-base md:text-lg font-medium ${isMattiaDisabled ? 'bg-gray-50/50' : 'focus:ring-4 focus:ring-rose-50 focus:border-rose-200'}`}
+                        value={currentMattiaAnswer}
+                        onChange={(e) => setCurrentMattiaAnswer(e.target.value)}
+                        placeholder="My reflection..."
+                        className="input-stationery w-full h-32 md:h-44 p-5 md:p-7 rounded-[24px] md:rounded-[32px] focus:ring-4 focus:ring-rose-50 focus:border-rose-200 outline-none transition-all resize-none text-gray-800 placeholder-gray-300 leading-relaxed text-base md:text-lg font-medium"
                       />
                     </div>
-                    <div className={`space-y-3 md:space-y-5 transition-opacity ${role === 'mattia' ? 'opacity-60' : ''}`}>
+                    <div className="space-y-3 md:space-y-5">
                       <div className="flex items-center justify-between px-1">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Amalia</label>
-                        {role === 'mattia' && <span className="text-[8px] text-rose-400 font-bold">LOCKED</span>}
                       </div>
                       <textarea 
-                        value={displayAmaliaVal}
-                        readOnly={isAmaliaDisabled}
-                        onChange={(e) => role === 'amalia' && setCurrentAmaliaAnswer(e.target.value)}
-                        placeholder={role === 'amalia' ? "Amalia's voice..." : "Waiting for Amalia..."}
-                        className={`input-stationery w-full h-32 md:h-44 p-5 md:p-7 rounded-[24px] md:rounded-[32px] outline-none transition-all resize-none text-gray-800 placeholder-gray-300 leading-relaxed text-base md:text-lg font-medium ${isAmaliaDisabled ? 'bg-gray-50/50' : 'focus:ring-4 focus:ring-rose-50 focus:border-rose-200'}`}
+                        value={currentAmaliaAnswer}
+                        onChange={(e) => setCurrentAmaliaAnswer(e.target.value)}
+                        placeholder="Amalia's voice..."
+                        className="input-stationery w-full h-32 md:h-44 p-5 md:p-7 rounded-[24px] md:rounded-[32px] focus:ring-4 focus:ring-rose-50 focus:border-rose-200 outline-none transition-all resize-none text-gray-800 placeholder-gray-300 leading-relaxed text-base md:text-lg font-medium"
                       />
                     </div>
                   </div>
@@ -314,29 +244,19 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <div className="flex flex-col items-center gap-6 pt-2">
+            <div className="flex justify-center pt-2">
               {!isShowingInstantFeedback ? (
-                <>
-                  <button 
-                    disabled={role === 'mattia' ? !currentMattiaAnswer : !currentAmaliaAnswer}
-                    onClick={handleShowFeedback}
-                    className={`premium-button w-full md:w-auto px-10 py-5 md:px-16 md:py-6 rounded-[20px] md:rounded-[24px] font-bold text-lg md:text-xl shadow-premium transition-all flex items-center justify-center gap-3
-                      ${(role === 'mattia' ? !currentMattiaAnswer : !currentAmaliaAnswer) 
-                        ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
-                        : 'bg-rose-500 text-white hover:bg-rose-600 active:scale-[0.98]'
-                      }`}
-                  >
-                    Verify Connection
-                  </button>
-                  
-                  <button 
-                    onClick={() => handleCopyLink(role === 'mattia' ? 'amalia' : 'mattia')}
-                    className="text-gray-400 text-[9px] uppercase tracking-[0.4em] font-bold hover:text-rose-500 transition-all flex items-center gap-2"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                    {copyStatus || (role === 'mattia' ? "Send my answer to Amalia" : "Send my answer to Mattia")}
-                  </button>
-                </>
+                <button 
+                  disabled={!currentMattiaAnswer || !currentAmaliaAnswer}
+                  onClick={handleShowFeedback}
+                  className={`premium-button w-full md:w-auto px-10 py-5 md:px-16 md:py-6 rounded-[20px] md:rounded-[24px] font-bold text-lg md:text-xl shadow-premium transition-all flex items-center justify-center gap-3
+                    ${(!currentMattiaAnswer || !currentAmaliaAnswer) 
+                      ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
+                      : 'bg-rose-500 text-white hover:bg-rose-600 active:scale-[0.98]'
+                    }`}
+                >
+                  Verify Connection
+                </button>
               ) : (
                 <button 
                   disabled={isLoadingFeedback}
@@ -371,14 +291,6 @@ const App: React.FC = () => {
               >
                 Synthesize Connection
               </button>
-              
-              <button 
-                onClick={() => handleCopyLink(role === 'mattia' ? 'amalia' : 'mattia')}
-                className="text-gray-400 text-[10px] uppercase tracking-[0.2em] font-bold hover:text-rose-500 transition-all"
-              >
-                {copyStatus || (role === 'mattia' ? "Share results with Amalia" : "Share results with Mattia")}
-              </button>
-
               <button 
                 onClick={() => {
                   setAnswers([]);
@@ -436,14 +348,6 @@ const App: React.FC = () => {
                       </svg>
                       Preserve this Moment
                     </button>
-                    
-                    <button 
-                      onClick={() => handleCopyLink(role === 'mattia' ? 'amalia' : 'mattia')}
-                      className="text-gray-400 text-[9px] uppercase tracking-[0.4em] font-bold hover:text-rose-500 transition-all"
-                    >
-                      {copyStatus || "Share Analysis Link"}
-                    </button>
-
                     <button 
                       onClick={() => setGameState(AppState.RESULTS)}
                       className="text-gray-300 text-[9px] md:text-[10px] hover:text-gray-600 transition-all uppercase tracking-[0.3em] font-black"
